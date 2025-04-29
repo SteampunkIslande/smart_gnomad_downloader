@@ -158,8 +158,7 @@ where
         .map(|o| o.expect("Cannot read line!"))
     {
         if line.starts_with("#") {
-            vcf_file_writer
-                .write(format!("{}\n", line).as_bytes())
+            writeln!(vcf_file_writer, "{}", line)
                 .expect("Cannot write to output! Received EOF or whatever...");
         } else {
             let pos: u32 = line
@@ -173,8 +172,7 @@ where
                 ));
             if let Some(intersects) = intersection_check.in_interval(pos) {
                 if intersects {
-                    vcf_file_writer
-                        .write(format!("{}\n", line).as_bytes())
+                    writeln!(vcf_file_writer, "{}", line)
                         .expect("Cannot write to output! Received EOF or whatever...");
                 }
             }
