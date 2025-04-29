@@ -131,15 +131,6 @@ fn get_blocking_reader_from_url(url: &str) -> Option<reqwest::blocking::Response
     client.get(url).send().ok()
 }
 
-fn tabix_index_vcf(src: &str, dst: &str) {
-    let index = noodles::vcf::fs::index(src).expect(&format!("Cannot index file {}!", src));
-
-    let mut writer = noodles::tabix::io::Writer::new(std::io::BufWriter::new(
-        std::fs::File::create(dst).expect("Cannot create file to write index!"),
-    ));
-    writer.write_index(&index).expect("Cannot write index!");
-}
-
 fn smart_save_vcf_from_url<I>(url: &str, expected_md5: &str, regions: I, output_file_name: &str)
 where
     I: Iterator<Item = (u32, u32)>,
@@ -189,13 +180,6 @@ where
             }
         }
     }
-
-    eprintln!("Writing index...");
-    tabix_index_vcf(
-        &format!("{}", output_file_name),
-        &format!("{}.tbi", output_file_name),
-    );
-    eprintln!("Successfully wrote index");
 
     let downloaded_md5 = md5_writer.digest();
     if &downloaded_md5 == expected_md5 {
