@@ -1,0 +1,15 @@
+[package]
+name = "smart_gnomad_downloader"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.37", features=["derive"]}
+csv = "1.3.1"
+indicatif = "0.17.11"
+md5 = "0.7.0"
+noodles = { version = "0.97.0", features = ["bgzf", "vcf", "tabix"] }
+pipe = "0.4.0"
+reqwest = { version = "0.12.15", features = ["blocking"] }
+serde = { version = "1.0.219", features = ["derive"] }
+tee = "0.1.0"
