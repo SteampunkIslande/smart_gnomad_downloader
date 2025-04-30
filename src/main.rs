@@ -1,16 +1,17 @@
 use clap::clap_derive;
 use clap::Parser;
 
+use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::PathBuf;
 
+use md5;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-
-use md5;
+use std::thread;
 
 #[derive(clap_derive::Parser, Debug)]
 #[clap(
@@ -67,16 +68,13 @@ impl Write for Md5ConsumerWriter {
 }
 
 impl Md5ConsumerWriter {
-    pub fn new(message_length: Option<u64>) -> Self {
+    pub fn new(progress_bar: ProgressBar) -> Self {
         Md5ConsumerWriter {
             md5_context: md5::Context::new(),
-            progress_bar: if let Some(len) = message_length {
-                ProgressBar::new(len)
-            } else {
-                ProgressBar::new_spinner()
-            },
+            progress_bar,
         }
     }
+
     pub fn digest(self) -> String {
         self.progress_bar.finish();
         format!("{:x}", self.md5_context.compute())
@@ -131,8 +129,13 @@ fn get_blocking_reader_from_url(url: &str) -> Option<reqwest::blocking::Response
     client.get(url).send().ok()
 }
 
-fn smart_save_vcf_from_url<I>(url: &str, expected_md5: &str, regions: I, output_file_name: &str)
-where
+fn smart_save_vcf_from_url<I>(
+    url: &str,
+    expected_md5: &str,
+    regions: I,
+    output_file_name: &str,
+    progress_bar: ProgressBar,
+) where
     I: Iterator<Item = (u32, u32)>,
 {
     eprintln!("Downloading file from {}", url);
@@ -140,7 +143,12 @@ where
     let raw_reader =
         get_blocking_reader_from_url(url).expect(&format!("Cannot download file at {}", url));
 
-    let mut md5_writer = Md5ConsumerWriter::new(raw_reader.content_length());
+    let pb = progress_bar;
+    if let Some(len) = raw_reader.content_length() {
+        pb.set_length(len);
+    }
+
+    let mut md5_writer = Md5ConsumerWriter::new(pb);
 
     let actual_reader = tee::TeeReader::new(raw_reader, &mut md5_writer);
     let bg_reader = noodles::bgzf::Reader::new(actual_reader);
@@ -240,14 +248,33 @@ fn main() {
         regions
     };
 
+    let mut thread_handles: Vec<thread::JoinHandle<_>> = Vec::new();
+
+    let multi_progress: MultiProgress = MultiProgress::new();
+
     for (chrom_name, regions) in regions_per_chr.into_iter() {
         if let Some((expected_md5, url)) = urls.get(&chrom_name) {
-            smart_save_vcf_from_url(
-                url,
-                expected_md5,
-                regions.into_iter(),
-                &format!("{}.vcf.gz", chrom_name),
-            );
+            let url = url.clone();
+            let expected_md5 = expected_md5.clone();
+            let chrom_name = chrom_name.clone();
+            let regions = regions.clone();
+
+            let pb = multi_progress.add(ProgressBar::no_length());
+
+            thread_handles.push(thread::spawn(move || {
+                smart_save_vcf_from_url(
+                    &url,
+                    &expected_md5,
+                    regions.into_iter(),
+                    &format!("{}.vcf.gz", &chrom_name),
+                    pb,
+                )
+            }));
+        }
+    }
+    for handle in thread_handles {
+        if let Err(e) = handle.join() {
+            eprintln!("Thread panicked with message {:?}", e);
         }
     }
 }
