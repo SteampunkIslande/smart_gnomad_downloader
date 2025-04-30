@@ -246,7 +246,7 @@ fn main() {
         regions
     };
 
-    let mut thread_handles: Vec<thread::JoinHandle<_>> = Vec::new();
+    let mut thread_handles: Vec<(thread::JoinHandle<_>, String)> = Vec::new();
 
     let multi_progress: MultiProgress = MultiProgress::new();
 
@@ -254,28 +254,32 @@ fn main() {
         if let Some((expected_md5, url)) = urls.get(&chrom_name) {
             let url = url.clone();
             let expected_md5 = expected_md5.clone();
-            let chrom_name = chrom_name.clone();
             let regions = regions.clone();
 
             let pb = multi_progress.add(ProgressBar::no_length());
 
-            thread_handles.push(thread::spawn(move || {
-                smart_save_vcf_from_url(
-                    &url,
-                    &expected_md5,
-                    regions.into_iter(),
-                    &format!("{}.vcf.gz", &chrom_name),
-                    pb,
-                )
-            }));
+            let chrom_name_clone = chrom_name.clone();
+
+            thread_handles.push((
+                thread::spawn(move || {
+                    smart_save_vcf_from_url(
+                        &url,
+                        &expected_md5,
+                        regions.into_iter(),
+                        &format!("{}.vcf.gz", &chrom_name),
+                        pb,
+                    )
+                }),
+                chrom_name_clone,
+            ));
         }
     }
-    for (threadid, handle) in thread_handles.into_iter().enumerate() {
+    for (threadid, (handle, chrom_name)) in thread_handles.into_iter().enumerate() {
         if handle
             .join()
             .expect(&format!("Cannot join thread {}", threadid))
         {
-            eprintln!("Successfully downloaded")
+            eprintln!("Successfully downloaded {}", &chrom_name);
         }
     }
 }
