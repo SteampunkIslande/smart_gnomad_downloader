@@ -75,9 +75,18 @@ impl Md5ConsumerWriter {
         }
     }
 
-    pub fn digest(self) -> String {
-        self.progress_bar.finish();
-        format!("{:x}", self.md5_context.compute())
+    pub fn digest(self, expected_md5sum: &str) -> bool {
+        let md5sum = format!("{:x}", self.md5_context.compute());
+        if &md5sum == expected_md5sum {
+            self.progress_bar
+                .set_message("Successfully downloaded file");
+            true
+        } else {
+            self.progress_bar
+                .set_message("Error: checksums do not match!");
+            self.progress_bar.finish();
+            false
+        }
     }
 }
 
@@ -135,7 +144,8 @@ fn smart_save_vcf_from_url<I>(
     regions: I,
     output_file_name: &str,
     progress_bar: ProgressBar,
-) where
+) -> bool
+where
     I: Iterator<Item = (u32, u32)>,
 {
     eprintln!("Downloading file from {}", url);
@@ -186,19 +196,7 @@ fn smart_save_vcf_from_url<I>(
             }
         }
     }
-
-    let downloaded_md5 = md5_writer.digest();
-    if &downloaded_md5 == expected_md5 {
-        eprintln!(
-            "MD5 checksums match! The whole VCF was downloaded properly! - {}",
-            output_file_name
-        );
-    } else {
-        eprintln!(
-            "MD5 checksums do not match! Part of the VCf was corrupted during download! - {}",
-            output_file_name
-        );
-    }
+    md5_writer.digest(expected_md5)
 }
 
 fn main() {
@@ -272,9 +270,12 @@ fn main() {
             }));
         }
     }
-    for handle in thread_handles {
-        if let Err(e) = handle.join() {
-            eprintln!("Thread panicked with message {:?}", e);
+    for (threadid, handle) in thread_handles.into_iter().enumerate() {
+        if handle
+            .join()
+            .expect(&format!("Cannot join thread {}", threadid))
+        {
+            eprintln!("Successfully downloaded")
         }
     }
 }
