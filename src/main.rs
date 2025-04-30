@@ -3,6 +3,7 @@ use clap::Parser;
 
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
@@ -156,6 +157,13 @@ where
     let pb = progress_bar;
     if let Some(len) = raw_reader.content_length() {
         pb.set_length(len);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("=>-"),
+        );
     }
 
     let mut md5_writer = Md5ConsumerWriter::new(pb);
