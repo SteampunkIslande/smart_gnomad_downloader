@@ -81,6 +81,7 @@ impl Md5ConsumerWriter {
         if &md5sum == expected_md5sum {
             self.progress_bar
                 .set_message("Successfully downloaded file");
+            self.progress_bar.finish();
             true
         } else {
             self.progress_bar
@@ -159,7 +160,7 @@ where
         pb.set_length(len);
         pb.set_style(
             ProgressStyle::with_template(
-                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}({percent}) {msg}",
             )
             .unwrap()
             .progress_chars("=>-"),
