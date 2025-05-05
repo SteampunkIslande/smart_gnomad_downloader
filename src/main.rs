@@ -3,6 +3,7 @@ use clap::Parser;
 
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
@@ -75,9 +76,19 @@ impl Md5ConsumerWriter {
         }
     }
 
-    pub fn digest(self) -> String {
-        self.progress_bar.finish();
-        format!("{:x}", self.md5_context.compute())
+    pub fn digest(self, expected_md5sum: &str) -> bool {
+        let md5sum = format!("{:x}", self.md5_context.compute());
+        if &md5sum == expected_md5sum {
+            self.progress_bar
+                .set_message("Successfully downloaded file");
+            self.progress_bar.finish();
+            true
+        } else {
+            self.progress_bar
+                .set_message("Error: checksums do not match!");
+            self.progress_bar.finish();
+            false
+        }
     }
 }
 
@@ -135,7 +146,8 @@ fn smart_save_vcf_from_url<I>(
     regions: I,
     output_file_name: &str,
     progress_bar: ProgressBar,
-) where
+) -> bool
+where
     I: Iterator<Item = (u32, u32)>,
 {
     eprintln!("Downloading file from {}", url);
@@ -146,6 +158,13 @@ fn smart_save_vcf_from_url<I>(
     let pb = progress_bar;
     if let Some(len) = raw_reader.content_length() {
         pb.set_length(len);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}({percent}) {msg}",
+            )
+            .unwrap()
+            .progress_chars("=>-"),
+        );
     }
 
     let mut md5_writer = Md5ConsumerWriter::new(pb);
@@ -186,19 +205,7 @@ fn smart_save_vcf_from_url<I>(
             }
         }
     }
-
-    let downloaded_md5 = md5_writer.digest();
-    if &downloaded_md5 == expected_md5 {
-        eprintln!(
-            "MD5 checksums match! The whole VCF was downloaded properly! - {}",
-            output_file_name
-        );
-    } else {
-        eprintln!(
-            "MD5 checksums do not match! Part of the VCf was corrupted during download! - {}",
-            output_file_name
-        );
-    }
+    md5_writer.digest(expected_md5)
 }
 
 fn main() {
@@ -248,7 +255,7 @@ fn main() {
         regions
     };
 
-    let mut thread_handles: Vec<thread::JoinHandle<_>> = Vec::new();
+    let mut thread_handles: Vec<(thread::JoinHandle<_>, String)> = Vec::new();
 
     let multi_progress: MultiProgress = MultiProgress::new();
 
@@ -256,25 +263,32 @@ fn main() {
         if let Some((expected_md5, url)) = urls.get(&chrom_name) {
             let url = url.clone();
             let expected_md5 = expected_md5.clone();
-            let chrom_name = chrom_name.clone();
             let regions = regions.clone();
 
             let pb = multi_progress.add(ProgressBar::no_length());
 
-            thread_handles.push(thread::spawn(move || {
-                smart_save_vcf_from_url(
-                    &url,
-                    &expected_md5,
-                    regions.into_iter(),
-                    &format!("{}.vcf.gz", &chrom_name),
-                    pb,
-                )
-            }));
+            let chrom_name_clone = chrom_name.clone();
+
+            thread_handles.push((
+                thread::spawn(move || {
+                    smart_save_vcf_from_url(
+                        &url,
+                        &expected_md5,
+                        regions.into_iter(),
+                        &format!("{}.vcf.gz", &chrom_name),
+                        pb,
+                    )
+                }),
+                chrom_name_clone,
+            ));
         }
     }
-    for handle in thread_handles {
-        if let Err(e) = handle.join() {
-            eprintln!("Thread panicked with message {:?}", e);
+    for (threadid, (handle, chrom_name)) in thread_handles.into_iter().enumerate() {
+        if handle
+            .join()
+            .expect(&format!("Cannot join thread {}", threadid))
+        {
+            eprintln!("Successfully downloaded {}", &chrom_name);
         }
     }
 }
