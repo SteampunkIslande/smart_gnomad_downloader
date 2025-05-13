@@ -160,7 +160,7 @@ where
         pb.set_length(len);
         pb.set_style(
             ProgressStyle::with_template(
-                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}({percent}%) {msg}",
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7}({percent}%) - [Remaining (estimate): {eta_precise}] {msg}",
             )
             .unwrap()
             .progress_chars("=>-"),
